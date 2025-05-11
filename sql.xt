@@ -1,0 +1,98 @@
+CREATE DATABASE miniproject;
+USE miniproject;
+
+-- Citizens table
+CREATE TABLE citizens (
+    CitizenID INT AUTO_INCREMENT PRIMARY KEY,
+    Name VARCHAR(100),
+    Email VARCHAR(100) UNIQUE,
+    Phone VARCHAR(15),
+    Address TEXT,
+    Password VARCHAR(100)
+);
+
+-- Authorities table
+CREATE TABLE authorities (
+    AuthorityID INT AUTO_INCREMENT PRIMARY KEY,
+    Name VARCHAR(100),
+    Department VARCHAR(100),
+    Email VARCHAR(100) UNIQUE,
+    Phone VARCHAR(15),
+    Password VARCHAR(100)
+);
+
+-- Complaints table
+CREATE TABLE complaints (
+    ComplaintID INT AUTO_INCREMENT PRIMARY KEY,
+    CitizenID INT,
+    AuthorityID INT,
+    Category VARCHAR(100),
+    Description TEXT,
+    Location TEXT,
+    DateSubmitted DATETIME DEFAULT CURRENT_TIMESTAMP,
+    Status ENUM('Pending', 'In Progress', 'Resolved') DEFAULT 'Pending',
+    FOREIGN KEY (CitizenID) REFERENCES citizens(CitizenID),
+    FOREIGN KEY (AuthorityID) REFERENCES authorities(AuthorityID)
+);
+
+-- Feedback table
+CREATE TABLE feedback (
+    FeedbackID INT AUTO_INCREMENT PRIMARY KEY,
+    ComplaintID INT,
+    CitizenID INT,
+    Rating INT,
+    Comments TEXT,
+    DateSubmitted DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (ComplaintID) REFERENCES complaints(ComplaintID),
+    FOREIGN KEY (CitizenID) REFERENCES citizens(CitizenID)
+);
+
+-- New audit table for tracking complaint status changes
+CREATE TABLE complaint_audit (
+    AuditID INT AUTO_INCREMENT PRIMARY KEY,
+    ComplaintID INT,
+    OldStatus ENUM('Pending', 'In Progress', 'Resolved'),
+    NewStatus ENUM('Pending', 'In Progress', 'Resolved'),
+    AuthorityID INT,
+    ChangeTimestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (ComplaintID) REFERENCES complaints(ComplaintID),
+    FOREIGN KEY (AuthorityID) REFERENCES authorities(AuthorityID)
+);
+
+-- Stored procedure for inserting complaints
+DELIMITER //
+CREATE PROCEDURE InsertComplaint(
+    IN p_CitizenID INT,
+    IN p_Category VARCHAR(100),
+    IN p_Description TEXT,
+    IN p_Location TEXT
+)
+BEGIN
+    INSERT INTO complaints (CitizenID, Category, Description, Location)
+    VALUES (p_CitizenID, p_Category, p_Description, p_Location);
+END //
+DELIMITER ;
+
+-- Function to get complaint status
+DELIMITER //
+CREATE FUNCTION GetComplaintStatus(complaint_id INT) RETURNS VARCHAR(20)
+DETERMINISTIC
+BEGIN
+    DECLARE status VARCHAR(20);
+    SELECT Status INTO status FROM complaints WHERE ComplaintID = complaint_id;
+    RETURN status;
+END //
+DELIMITER ;
+
+-- Trigger to log status changes
+DELIMITER //
+CREATE TRIGGER after_complaint_update
+AFTER UPDATE ON complaints
+FOR EACH ROW
+BEGIN
+    IF OLD.Status != NEW.Status THEN
+        INSERT INTO complaint_audit (ComplaintID, OldStatus, NewStatus, AuthorityID, ChangeTimestamp)
+        VALUES (NEW.ComplaintID, OLD.Status, NEW.Status, NEW.AuthorityID, CURRENT_TIMESTAMP);
+    END IF;
+END //
+DELIMITER ;
